@@ -1,0 +1,409 @@
+---
+title: "The CNPDIA package - early diagenetic modelling of the C, N and P cycle"
+author: "Karline Soetaert"
+date: "20-June-2020"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+```{echo = FALSE, include = FALSE}
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{CNPDIA package}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+```
+
+
+```{r setup, include=FALSE}
+options(width = 120)
+```
+
+# CNPDIA
+
+The CNPDIA model is a 1-D model of Carbon, nitrogen, phosphorus and oxygen diagenesis in a marine sediment. 
+It is based on the OMEXDIA model (Soetaert et al., 1996a, b), extended with simple P dynamics.
+
+The model describes twelve state variables, in 100 layers:
+
+* 2 fractions of organic carbon (FDET,SDET): fast and slow decaying, solid substance.
+* Oxygen (O2), dissolved substance.
+* Nitrate (NO3), dissolved substance.
+* Nitrite (NO2), dissolved substance.
+* Ammonium (NH3), dissolved substance.
+* Oxygen demand unit (ODU), dissolved substance, as a lump sum of all reduced substances other than ammonium.
+* Dissolved inorganic carbon (DIC), dissolved substance
+* Phosphate (PO4), dissolved substance
+* Iron-bound P (FeP), P bound to iron oxides, solid substance
+* Ca-bound P (CaP), apatite, solid substance
+* Adsorbed P (Pads), solid substance
+
+Time is expressed in days, and space is expressed in centimeters.
+
+Concentrations of liquids and solids are expressed in [nmol/cm3 liquid] and [nmol/cm3 solid] respectively 
+(Note: this is the same as [mmol/m3 liquid] and [mmol/m3 solid]). 
+
+Compared to the OMEXDIA model, CNPDIA includes the following additions:
+
+* simple phosphorus dynamics, 
+* allowing boundary conditions with water overlying sediment or exposure to the air,
+* external conditions set either with time-variable forcings or as constant parameters,
+* bottom water conditions either imposed or dynamically modeled,
+* possibility to include sediment perturbation events,
+* vertical profiles of porosity, irrigation, bioturbation either set with parameters or inputted as data.
+
+See Soetaert et al., 1996 for further details of the original OMEXDIA model.
+
+The model is implemented in fortran (for speed) and linked to R (for flexibility).
+
+# The package
+
+```{r, message=FALSE}
+require(CNPDIA)
+```
+
+The CNPDIA package contains functions to generate (a time series of) 1-D diagenetic profiles. It can either be run in dynamic mode, or the steady-state solution can  be estimated. It contains several utility functions, e.g. to help in extracting information on the model output, or to estimate mass budgets. It contains functions to perturb sediment properties, e.g. mimicking resuspension or deposition events.
+
+# Main functions
+
+The main functions allow to solve the model to steady state (*CNPDIAsolve*), to run it dynamically (*CNPDIAdyna*), or to add perturbations (*CNPDIAperturb*) to dynamic simulations (this is discussed in another vignette).
+
+## Steady-state solution, function CNPDIAsolve
+
+Function *CNPDIAsolve* finds the steady-state solution of the CNPDIA model. Its arguments are:
+
+```{r, comment=NA}
+args(CNPDIAsolve)
+```
+
+here *parms* is a list with a subset of the CNPDIA parameters (see appendix for what they mean and their default values). If unspecified, then the default parameters are used.
+
+The *gridtype* by default assumes a cartesian grid (*gridtype = 1*), but can be 1D cylindrical (*gridtype = 2*) or spherical (*gridtype = 3*). An irregular grid can be seleceted by specifying the surface areas at the interface through argument *surface*. In a cartesian grid the surface area remains constant.
+
+The vertical profiles that can be imposed as a vector are:  *porosity*, *bioturbation* *irrigation*, *surface* (surface areas of box interfaces) and *diffusionfactor* (multiplication factor to estimate effective sediment diffusion based on molecular diffusion).
+
+*dynamicbottomwater*, when set to TRUE will also explicitly model the bottom water concentrations.
+
+*ratefac* is a multiplication factor, that is multiplied with all biogeochemical rates. It is included here for consistency with *CNPDIAdyna*.
+
+## Dynamic run, function CNPDIAdyna
+
+Function *CNPDIAdyna* runs the CNPDIA model for a specific time interval and produces output at requested times. Its arguments are:
+
+```{r, comment=NA}
+args(CNPDIAdyna)
+```
+
+The functions to run the model dynamically also allow for several external conditions to be either constants or to vary in time. 
+Thus, they can be set by a parameter or as a forcing function. 
+
+These conditions are:
+
+* the flux of carbon, CaP and FeP (parameters *Cflux, CaPflux, FePflux*, forcings *CfluxForc, CaPfluxForc, FePfluxForc*), 
+* the bottom water concentrations (parameters *O2bw, NO3bw, NO2bw, NH3bw, ODUbw, PO4bw, DICbw*, forcings *O2bwForc, NO3bwForc, NO2bwForc, NH3bwForc, ODUbwForc, PO4bwForc, DICbwForc*)
+* the sedimentation, bioturbation and bio-irrigation rates (*w, biot, irr*), (*wForc, biotForc, irrForc*)
+* the decay rates of organic matter (parameters *rFast, rSlow*, forcings *rFastForc, rSlowForc*) and the fraction fast organic matter present in the flux (parameter *pFast*, forcing *pFastForc*)
+* the air-sea exchange rate when exposed to the air (parameter *gasflux*, forcings *gasfluxForc*)
+* the height of the overlying water (parameter *Hwater*, forcing function *HwaterForc*), effective only if *dynamicbottomwater* is *TRUE*.
+* *ratefac* is a (time series or a constant) multiplication factor, that is multiplied with all biogeochemical rates. It can be used to impose temperature dependency.
+
+
+These forcing functions are either prescribed as a list that contains a data series (*list (data = ...)*) or as a list that specifies a periodic signal, defined by the amplitude (*amp*), *period*, *phase*, a coefficient that defines the strength of the periodic signal (*power*) and the minimum value (*min*) : the default settings are:  *list(amp = 0, period = 365, phase = 0, pow = 1, min = 0)*. The mean value in the sine function is given by the corresponding parameter. 
+
+For instance, for the C flux, the seasonal signal would be defined as: 
+$max(min, Cflux*(1 + (amp*sin((times-phase)/period*2*pi))^pow)$.
+
+## Perturbation run, function CNPDIAperturb
+
+```{r, comment=NA}
+head(args(CNPDIAperturb))
+```
+
+Three types of perturbations are possible (argument *perturb*): 
+
+* *mixing* straightens the profiles over a certain depth
+* *erosion* removes part of the surficial sediment 
+* *deposition* adds sediment on top. 
+
+These perturbations are implemented as events, and need input of the perturbation times (*perturbTimes*), and the depth (*perturbDepth*). For deposition  events, the factor of increase/decrease of the solid fraction concentration can also be inputted (*concfac*).
+
+
+## Accessory functions
+
+The default values of the parameters, and their units can be interrogated:
+
+```{r}
+P  <- CNPDIAparms()
+head(P)
+```
+
+See the appendix for a complete list of the parameters.
+
+
+Note: some parameters only apply if the bottom water concentration is modeled dynamically; they comprise the *dilution* of the bottom water (nudging to bottom water concentration), the height of the bottom water (*Hwater*), and the sinking rate of the solid constituents (C, FeP, CaP) (parameters *Cfall*, *CaPfall* and *FePfall*).
+
+
+## Budgets
+
+Once the model is solved, it is possible to calculate budgets of the C, N, P and O2 cycle (*CNPDIAbudgetC*, *CNPDIAbudgetN*, *CNPDIAbudgetP*, *CNPDIAbudgetO2*).
+
+
+```{r}
+std <- CNPDIAsolve(parms = list(Cflux = 1500))
+
+print(CNPDIAbudgetC(std))
+```
+
+where all fluxes are in *nmol/cm2/day*.
+
+## Properties of solutions
+
+There are functions to retrieve several properties of the solution:
+
+* *CNPDIAdepth*, *CNPDIAdx*, *CNPDIAgrid* retrieve the sediment depths, layer thicknesses and grid of *CNPDIA* model solutions.
+* *CNPDIAbiot*, *CNPDIApor*, *CNPDIAirr* retrieve the bioturbation, porosity, and irrigation profiles of *CNPDIA* model solutions.
+* *CNPDIAparms* retrieves the parameter settings of *CNPDIA* model solutions.
+* *CNPDIA0D* and *CNPDIA1D* return the output variables of the solution as a vector or data.frame. For dynamic runs, the output is averaged over the mean of the run. *CNPDIA1D* always returns the sediment depth and the porosity as the first two columns.
+
+The modeled sedimentlayers increase in thickness from the surface (0.0099 cm) till the deepest layer (> 6 cm). The total modeled sediment depth is 100 cm. There are 100 sediment layers.
+
+```{R}
+range(CNPDIAdx(std))
+range(CNPDIAgrid()$x.int)
+CNPDIAdepth(std)
+```
+
+```{r}
+head(CNPDIA1D(std), n = 3)
+```
+
+```{r}
+CNPDIAparms(std, which = "Cflux")
+```
+
+# Steady-state applications
+
+The function *CNPDIAsolve* solves for a steady-state condition.
+
+## Simple applications
+
+In the frst example, we run the model for different carbon deposition rates (expressed in *nmolC/cm2/d*) and plot the results using *rootSolve*'s *plot* function.
+
+```{r fig.width=8, fig.height=8}
+convert <- 1e5/12/365
+STD1 <- CNPDIAsolve (parms = list(Cflux = 20*convert))    # 20 gC/m2/yr
+STD2 <- CNPDIAsolve (parms = list(Cflux = 100*convert))   # 100 gC/m2/yr
+STD3 <- CNPDIAsolve (parms = list(Cflux = 2*convert))
+plot(STD1, STD2, STD3, 
+     ylim = c(20, 0), lty = 1, lwd = 2, which = 2:10)
+legend("bottom", legend = c(20, 100, 2), lty = 1, col = 1:3, title = "gC/m2/yr")
+```
+
+## User-inputted profiles
+
+By default porosity, bioturbation, and bio-irrigation profiles are generated based on parameter settings. However, it is possible to directly impose profiles for these quantities.
+
+In the following example, an irrigation profile is generated where there is substantial irrigation only in a certain section of the sediment ([2-3 cm]). 
+
+```{r fig.width=8, fig.height=8}
+Grid <- CNPDIAgrid()
+Irr  <- rep(0, Grid$N)
+Irr[Grid$x.mid > 2 &  Grid$x.mid < 3] <- 1   
+out <- CNPDIAsolve()
+irrout <- CNPDIAsolve(irrigation = Irr)
+plot(out, irrout, 
+     ylim = c(10, 0), lty = 1, lwd = 2, which = c(3:9))
+plot(out, irrout, 
+     ylim = c(10, 0), lty = 1, lwd = 2, which = c("TOC"), mfrow = NULL)
+matplot(x=cbind(CNPDIAirr(out), CNPDIAirr(irrout)), y = CNPDIAdepth(out), 
+     ylim = c(10, 0), type = "l", lty = 1:2, lwd = 2, main = "irrigation")
+
+```
+
+
+## Dry flats (but moist sediment)
+
+When flats are dry, the exchange is governed by a piston velocity. The exchange of substances at the upper interface can take on two modes: exchange with water overlying the sediment or exchange with the atmosphere.
+
+When the parameter *gasflux*, or forcing function *gasfluxForc* is 0, this means that the sediment is submersed. When they have a positive value, equal to the piston velocity, (units [cm/d]), this means that the sediment is exposed to the air. In that case, only oxygen and DIC are exchanged with the air at the upper interface, while there is no exchange for NH3, NO3, NO2, ODU, PO4. Deposition of the two carbon fractions and of FeP, CaP continues.
+
+```{r fig.width=8, fig.height=6}
+out    <- CNPDIAsolve()
+outdry <- CNPDIAsolve(parms = list(gasflux = 1e2))
+
+
+plot(out, outdry, ylim = c(10, 0), lty = 1, lwd = 2, 
+     which = c("O2","NO3","NH3","PO4","FeP","TOC"))
+legend("center", col = 1:2, title = "exchange", legend = c("water","dry"), lty = 1) 
+```
+
+
+```{r}
+print(CNPDIAbudgetO2(outdry))
+print(CNPDIAbudgetN(outdry))
+```
+
+# Dynamic runs with sinusoidal forcing
+
+## Carbon input
+In the first dynamic run, a sinusoidal variation in time is used for the C flux, with amplitude = 1, the other parameters are left equal to the default.
+
+```{r fig.width=8, fig.height=8}
+DIA <- CNPDIAdyna (CfluxForc = list(amp = 1))
+image2D(DIA, ylim = c(20, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2)
+plot(DIA, which = c("NH3flux", "PO4flux"), mfrow = NULL, lwd = 2)
+```
+
+
+# dynamic runs with imposed forcing function time series
+
+## Carbon flux and bottom water concentrations
+
+We can also impose a time-series. Here we impose this for the carbon flux, and for the Oxygen bottom water concentration.
+
+```{r fig.width=8, fig.height=8}
+fluxforcdat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                          flux = c(20, 20, 100, 100, 20, 20)*1e5/12/365)
+O2forcdat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                        conc = c(200, 200, 10, 10, 200, 200))
+DIA <- CNPDIAdyna (CfluxForc = list(data = fluxforcdat), 
+                   O2bwForc = list(data = O2forcdat), spinup = 0:365)
+image2D(DIA, ylim = c(20, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA, which = c("bwO2","NH3flux"), mfrow = NULL, lwd = 2)
+```
+
+## Flux and sedimentation rates
+
+Other variables that are forced are *w*, *biot*, *irr* for the sedimentation rate, bioturbation rate and irrigation rates respectively,  ...
+
+```{r fig.width=8, fig.height=8}
+fluxforcdat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                          flux = c(20, 20, 100, 100, 20, 20)*1e5/12/365)
+seddat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                     w = c(0.1, 0.1, 10, 10, 0.1, 0.1)/365)  #cm/d
+DIA <- CNPDIAdyna (CfluxfForc = list(data = fluxforcdat), 
+                   wForc = list(data = seddat), 
+                   spinup = 0:365)
+image2D(DIA, ylim = c(20, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA, which = c("w", "NH3flux"), mfrow = NULL, lwd = 2)
+```
+
+## Deposition-erosion rates. 
+
+Particles often go through a repeated deposition-erosion cycle. In the first case, sedimentation rate, *w* is positive, and there is solid deposition; in the latter case, *w* is negative and there is no carbon deposition, *Cdepo*.
+
+In the first run only the sedimentation rate fluctuates.
+
+```{r fig.width=8, fig.height=8}
+FF <- c(20, 30, 20, 10, 0, 0, 0, 0, 0, 0)*1e5/12/365
+SS <- c(0.2, 0.2, 0.2, 0.1, 0.0,-0.1,-0.2,-0.2,-0.1, 0)  #cm/d
+FF <- rep(FF, times = 10)
+Fluxforcdat <- data.frame(time = seq(0, to = 39.8, length.out = length(FF)), 
+                          flux = FF)
+
+SS <- rep(SS, times = 10)
+Seddat <- data.frame(time = seq(0, to = 39.8, length.out = length(SS)), 
+                     w = SS)
+
+times <- seq(0, 19, length.out = 300)
+
+P <- list(Cflux = FF[1], w = SS[1])
+std <- CNPDIAsolve(parms = P)
+DIA <- CNPDIAdyna (wForc = list(data = Seddat), times = times, spinup = times,
+                    yini = std$y)
+CNPDIAbudgetC(std, DIA, which = "Rates")
+```
+
+```{r fig.width=8, fig.height=8}
+image2D(DIA, ylim = c(15, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA, which = c("w","NH3flux"), mfrow = NULL, lwd = 2)
+```
+
+In the second run both the sedimentation rate and the carbon flux fluctuate.
+
+```{r}
+DIA2 <- CNPDIAdyna (CfluxForc = list(data = Fluxforcdat), wForc = list(data = Seddat),
+                    times = times, spinup = times, yini = std$y)
+
+```
+
+```{r fig.width=8, fig.height=8}
+image2D(DIA2, ylim = c(15, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA2, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA2, which = c("w", "NH3flux"), mfrow = NULL, lwd = 2)
+
+print(CNPDIAbudgetC(DIA, DIA2, which = "Rates"))
+```
+
+# Dynamic runs with explicitly modeled bottom water conditions
+
+## Incubation experiments
+
+The simulation is initiated with the steady-state conditions, while keeping the bottom water conditions constant.
+
+```{r}
+std <- CNPDIAsolve(dynamicbottomwater = FALSE, parms = list(Cflux = 100*1e5/12/365))
+CNPDIAbudgetO2(std, which = "Fluxes")
+```
+
+The initial conditions for the dynamic bottom water concentration run needs to have the bottom water concentrations as the first row.
+
+The model is run for two days.
+
+```{r}
+std <- CNPDIAsolve()
+P <- CNPDIAparms(std, as.vector = TRUE)[c("O2bw","NO3bw","NO2bw","NH3bw","ODUbw","DICbw","PO4bw")]
+# order of state variables, FDET,SDET,O2,NO3,NH3,ODU,PO4,FeP,CaP,DIC
+BW <- c(0, 0, P, 0, 0, 0)  
+dyn <- CNPDIAdyna(dynamicbottomwater = TRUE, yini = rbind(BW, std$y), 
+      parms = list(Cflux = 100*1e5/12/365), times = seq(0, 2, length.out = 100))
+```
+
+```{r, fig.width = 6, fig.height = 6}
+image2D(dyn, which = c("O2", "NO3", "NH3","ODU"), ylim = c(10,0))
+plot(dyn, which = c("O2bw","NO3bw","NH3bw","ODUbw","PO4bw","DICbw"))
+plot(dyn, which = c("O2flux","NO3flux","NH3flux","ODUflux","PO4flux","DICflux"))
+
+```
+
+# Perturbation runs
+
+See vignette ("CNPDIAperturb")
+
+
+# References
+Soetaert K, PMJ Herman and JJ Middelburg, 1996a. A model of early diagenetic processes from the shelf to abyssal depths. Geochimica Cosmochimica Acta, 60(6):1019-1040.
+
+Soetaert K, PMJ Herman and JJ Middelburg, 1996b. Dynamic response of deep-sea sediments to seasonal variation: a model. Limnol. Oceanogr. 41(8): 1651-1668.
+
+# APPENDIX
+
+## Parameters and default values.
+
+```{r}
+knitr:::kable(CNPDIAparms())
+```
+
+## State variables
+
+```{r}
+knitr:::kable(CNPDIAsvar())
+```
+
+## Zero-D ordinary variables
+
+```{r}
+knitr:::kable(CNPDIA0D())
+```
+
+## One-D ordinary variables
+
+```{r}
+knitr:::kable(CNPDIA1D())
+```
+

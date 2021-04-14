@@ -1,0 +1,11 @@
+Package: CNPDIA
+Version: 1.0
+Title: Diagenetic Model with Simple Nitrogen, Carbon, Phosphorus Dynamics
+Author: Karline Soetaert <karline.soetaert@nioz.nl>
+Maintainer: Karline Soetaert <karline.soetaert@nioz.nl>
+Depends: R (>= 3.0), deSolve, rootSolve, plot3D
+Imports: marelac, ReacTran, methods
+Description: Early diagenetic model with C, N, O, P-dynamics based on OMEXDIA.
+License: GPL (>=3.0)
+LazyData: yes
+Packaged: 2015-05-28 13:34:13 UTC; KarlineS
