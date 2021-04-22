@@ -1,0 +1,639 @@
+---
+title: "The FESDIA package - early diagenetic modelling of the C, N, P, Fe and S cycle"
+author: "Karline Soetaert"
+date: "08-July-2020"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{echo = FALSE, include = FALSE}
+rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{FESDIA package}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+```
+
+```{r setup, include=FALSE}
+options(width = 100)
+```
+
+
+# FESDIA
+
+```{r, message=FALSE}
+require(FESDIA)
+```
+
+Tne FESDIA package contains functions to generate diagenetic profiles, describing the cycles of C, N, O2, Fe, S and P. It is based on the OMEXDIA model (Soetaert et al., 1996a, b), extended with P, S, Fe dynamics.
+
+The model describes seventeen state variables, in 100 layers:
+
+* 2 fractions of organic carbon (FDET,SDET): fast and slow decaying, solid substance.
+* Oxygen (O2), dissolved substance.
+* Nitrate (NO3), dissolved substance.
+* Nitrite (NO2), dissolved substance.
+* Ammonia (NH3), dissolved substance.
+* Dissolved inorganic carbon (DIC), dissolved substance
+* Iron 2+ (Fe), dissolved substance
+* Sulphide (H2S), dissolved substance
+* Methane (CH4), dissolved substance
+* Phosphate (PO4), dissolved substance
+* Alkalinity (ALK), dissolved substance
+* Iron hydroxides (FeOH3), solid substance
+* Iron-bound P (FeP), P bound to iron oxides, solid substance
+* Ca-bound P (CaP), apatite, solid substance
+* Adsorbed P (Pads), solid substance
+
+Time is expressed in days, and space is expressed in centimeters.
+
+Concentrations of liquids and solids are expressed in [nmol/cm3 liquid] and [nmol/cm3 solid] respectively 
+(Note: this is the same as [mmol/m3 liquid] and [mmol/m3 solid]). 
+
+Compared to the OMEXDIA model, FESDIA includes the following additions:
+
+* simple phosphorus, iron and sulphur dynamics
+* long-distance H2S and CH4 oxidation, e.g. by cable bacteria or worms associated with chemosynthetic bacteria
+* allowing boundary conditions with water overlying sediment or exposure to the air. 
+* external conditions set either with time-variable forcings or as constant parameters
+* bottom water conditions either imposed or dynamically modeled
+* possibility to include sediment perturbation events
+* vertical profiles of porosity, irrigation, bioturbation either set with parameters or inputted as data.
+
+The model is implemented in fortran (for speed) and linked to R (for flexibility).
+
+# The package
+
+The FESDIA package contains functions to generate (a time series of) 1-D diagenetic profiles. It can either be run in dynamic mode, or the steady-state solution can  be estimated. It contains several utility functions, e.g. to help in extracting information on the model output, or to estimate mass budgets. It contains functions to perturb sediment properties, e.g. mimicking resuspension or deposition events.
+
+The main functions allow to solve the model to steady state (*FESDIAsolve*), to run it dynamically (*FESDIAdyna*), or to add perturbations (*FESDIAperturb*) to dynamic simulations  (this is discussed in another vignette)..
+
+## Steady-state solution, function FESDIAsolve
+
+Function *FESDIAsolve* finds the steady-state solution of the FESDIA model. Its arguments are:
+
+```{r, comment=NA}
+args(FESDIAsolve)
+```
+
+here *parms* is a list with a subset of the FESDIA parameters (see appendix for what they mean and their default values). If unspecified, then the default parameters are used.
+
+The *gridtype* by default assumes a cartesian grid (*gridtype = 1*), but can be 1D cylindrical (*gridtype = 2*) or spherical (*gridtype = 3*). An irregular grid can be seleceted by specifying the surface areas at the interface through argument *surface*. In a cartesian grid the surface area remains constant.
+
+The vertical profiles that can be imposed as a vector are:  *porosity*, *bioturbation* *irrigation*, *surface* (surface areas of box interfaces) and *diffusionfactor* (multiplication factor to estimate effective sediment diffusion based on molecular diffusion).
+
+*dynamicbottomwater*, when set to TRUE will also explicitly model the bottom water concentrations.
+
+*ratefac* is a multiplication factor, that is multiplied with all biogeochemical rates. It is included here for consistency with *FESDIAdyna*.
+
+## Dynamic run, function FESDIAdyna
+
+Function *FESDIAdyna* runs the FESDIA model for a specific time interval and produces output at requested times. Its arguments are:
+
+```{r, comment=NA}
+args(FESDIAdyna)
+```
+
+The functions to run the model dynamically also allow for several external conditions to be either constants or to vary in time. Thus, they can be set by a parameter or as a forcing function. 
+
+These conditions are:
+
+* the flux of carbon, CaP and FeP (*Cflux, CaPflux, FeOH3flux*), forcings *CfluxForc, CaPfluxForc, FeOH3fluxForc*),  
+* the bottom water concentrations (*O2bw, NO2bw, NO3bw, NH3bw, H2Sbw, PO4bw, DICbw, ALKbw*), forcings *O2bwForc, NO3bwForc, NO2bwForc, NH3bwForc, ODUbwForc, PO4bwForc, DICbwForc, ALKbwForc*) 
+* the sedimentation, bioturbation and bio-irrigation rates (*w, biot, irr*), (*wForc, biotForc, irrForc*)
+* the decay rates of organic matter (*rFast, rSlow*) and the fraction fast organic matter present in the flux (*pFast*), forcings (*rFastForc, rSlowForc, pFastForc*)
+* the microphytobenthos production rate (*MPBprod*), (*MPBprodForc*)
+* the air-sea exchange rate when exposed to the air (*gasflux*), (*gasfluxForc*)
+* the height of the overlying water (*Hwater*), (*HwaterForc*), used only if *dynamicbottomwater* is *TRUE*.
+* *ratefac* is a (time series or a constant) multiplication factor, that is multiplied with all biogeochemical rates. It can be used to impose temperature dependency.
+
+These forcing functions are either prescribed as a list that either contains a data series (*list (data = ...)*) or as a list that specifies a periodic signal, defined by the amplitude (*amp*), *period*, *phase*, a coefficient that defines the strength of the periodic signal (*power*) and the minimum value (*min*) : the default settings are:  *list(amp = 0, period = 365, phase = 0, pow = 1, min = 0)*. The mean value in the sine function is given by the corresponding parameter. 
+
+For instance, for the C flux, the seasonal signal would be defined as: 
+$max(min, Cflux*(1 + (amp*sin((times-phase)/period*2*pi))^pow)$.
+
+## Perturbation run, function FESDIAperturb
+
+```{r, comment=NA}
+args(FESDIAperturb)
+```
+
+Three types of perturbations are possible (argument *perturb*): 
+
+* *mixing* straightens the profiles over a certain depth
+* *erosion* removes part of the surficial sediment 
+* *deposition* adds sediment on top. 
+
+These perturbations are implemented as events, and need input of the perturbation times (*perturbTimes*), and the depth (*perturbDepth*). For deposition  events, the factor of increase/decrease of the solid fraction concentrtion can also be inputted (*concfac*).
+
+
+## Accessory functions
+
+The default values of the parameters, and their units can be interrogated:
+
+```{r}
+P  <- FESDIAparms()
+head(P)
+```
+
+Note: some parameters only apply if the bottom water concentration is modeled dynamically; they comprise the *dilution* of the bottom water (nudging to bottom water concentration), the height of the bottom water (*Hwater*), and the sinking rate of the solid constituents (C, FeP, FeOH3) (parameters *Cfall*, *FePfall* and *FeOH3fall*).
+
+
+## Budgets
+
+Once the model is solved, it is possible to calculate budgets of the C, N, P, S, Fe and O2 cycle (*FESDIAbudgetC*, *FESDIAbudgetN*, *FESDIAbudgetP*, *FESDIAbudgetS*, *FESDIAbudgetFe*, *FESDIAbudgetO2*).
+
+
+```{r}
+std <- FESDIAsolve()
+print(FESDIAbudgetC(std))
+```
+
+## pH calculation
+
+pH can be calculated after the solution has been found, both for steady-state and dynamic runs.
+Plotting of these pH profiles has to be done with the default plotting functions.
+
+### Steady-state pH profile
+
+```{r, fig.width = 3, fig.height=4}
+  std  <- FESDIAsolve(parms = list(Cflux = 2*1e5/12/365))
+  std2 <- FESDIAsolve(parms = list(Cflux = 20*1e5/12/365))
+  std3 <- FESDIAsolve(parms = list(Cflux = 200*1e5/12/365))
+  pH  <- FESDIApH(std)
+  pH2 <- FESDIApH(std2)
+  pH3 <- FESDIApH(std3)
+  matplot(x = cbind(pH, pH2, pH3), y = FESDIAdepth(std), ylim = c(10,0), 
+    main = "pH", ylab= "cm", type = "l", xlab = "-", lwd = 2, lty = 1)
+  legend("bottomright", legend = c(2,20,200), title = "gC/m2/yr", 
+    lty=1, col = 1:3, lwd = 2)
+```
+
+### Dynamic pH solutions
+
+```{r, fig.width=8, fig.height=8}
+  Cflux2 <- cbind (time = c(0, 100,  150,  175, 200, 250, 365),
+                  flux = c(1, 1,    1000, 800, 1200, 10, 1)) 
+  Cflux1 <- Cflux3 <- Cflux2
+  Cflux1[,2] <- Cflux1[,2]/10
+  Cflux3[,2] <- Cflux3[,2]*10
+  
+  out1 <- FESDIAdyna(parms = list(pFast = 0.9), CfluxForc = list(data = Cflux1), 
+                     spinup = 0:365, times = 0:365)
+  out2 <- FESDIAdyna(parms = list(pFast = 0.9), CfluxForc = list(data = Cflux2), 
+                     spinup = 0:365,  times = 0:365)
+  out3 <- FESDIAdyna(parms = list(pFast = 0.9), CfluxForc = list(data = Cflux3),  
+                     spinup = 0:365, times = 0:365)
+  pH1 <- FESDIApH(out1)
+  pH2 <- FESDIApH(out2)
+  pH3 <- FESDIApH(out3)
+```
+
+```{r, fig.width=8, fig.height=8}
+  par(oma = c(0,0,2,0))
+  image2D(out1, ylim = c(10, 0), mfrow = c(3, 3), 
+      which = c("NH3", "O2", "NO3", "PO4", "H2S", "Fe", "SO4", "ALK"))
+  image2D(pH1, ylim = c(10,0), y = FESDIAdepth(out1), x = out1[,1], 
+         clab = "", xlab = "day", ylab = "cm", main = "pH")
+  title(main = "Low flux", outer = TRUE)
+
+  image2D(out3, ylim = c(10, 0), 
+    mfrow = c(3, 3), which = c("NH3", "O2", "NO3", "PO4", "H2S", "Fe", "SO4", "ALK"))
+  plot3D::image2D(pH3, ylim = c(10,0), y = FESDIAdepth(out3), x = out3[,1], 
+         clab = "", xlab = "day", ylab = "cm", main = "pH")
+  title(main = "High flux", outer = TRUE)
+  
+```
+
+## Properties of solutions
+
+There are functions to retrieve several properties of the solution:
+
+* *FESDIAdepth*, *FESDIAdx*, *FESDIAgrid* retrieve the sediment depths, layer thicknesses and grid of *FESDIA* model solutions.
+* *FESDIAbiot*, *FESDIApor*, *FESDIAirr* retrieve the bioturbation, porosity, and irrigation profiles of *FESDIA* model solutions.
+* *FESDIA0D* and *FESDIA1D* return the output variables of the solution as a vector or data.frame. For dynamic runs, the output is averaged over the mean of the run. *FESDIA1D* always returns the sediment depth and the porosity as the first two columns.
+
+```{R}
+head(FESDIAdepth(std))
+head(FESDIA1D(std), n = 3)
+```
+
+```{r}
+FESDIAparms(std, which = "Cflux")
+```
+
+# Steady-state applications
+
+The function *FESDIAsolve* solves for a steady-state condition.
+
+## Simple applications
+
+In the frst example, we run the model for different carbon deposition rates (expressed in *nmolC/cm2/d*) and plot the results using *rootSolve*'s *plot* function.
+
+```{r fig.width=8, fig.height=8}
+convert <- 1e5/12/365
+STD1 <- FESDIAsolve ()
+STD2 <- FESDIAsolve (parms = list(Cflux = 100*convert))
+STD3 <- FESDIAsolve (parms = list(Cflux = 2*convert))
+plot(STD1, STD2, STD3, lwd = 2, which = 2:10)
+legend("bottom", legend = c(20, 100, 2), lty = 1, col = 1:3, title = "gC/m2/yr")
+```
+
+## User-inputted profiles
+
+By default porosity, bioturbation, and bio-irrigation profiles are generated based on parameter settings. However, it is possible to directly impose profiles for these quantities.
+
+In the following example, an irrigation profile is generated where there is substantial irrigation only in a certain section of the sediment ([2-3 cm]). 
+
+```{r fig.width=8, fig.height=8}
+Grid <- FESDIAgrid()
+Irr <- rep(0, Grid$N)
+Irr[Grid$x.mid > 2 &  Grid$x.mid < 3] <- 1   
+out <- FESDIAsolve()
+irrout <- FESDIAsolve(irrigation = Irr)
+plot(out, irrout, 
+     ylim = c(10, 0), lty = 1, lwd = 2, which = c(3:9))
+plot(out, irrout, 
+     ylim = c(10, 0), lty = 1, lwd = 2, which = c("TOC"), mfrow = NULL)
+matplot(x=cbind(FESDIAirr(out), FESDIAirr(irrout)), y = FESDIAdepth(out), 
+     ylim = c(10, 0), type = "l", lty = 1:2, lwd = 2, main = "irrigation")
+
+```
+
+```{r fig.width=4, fig.height=4}
+pH <- cbind(FESDIApH(out), FESDIApH(irrout))
+matplot(x = pH, y = FESDIAdepth(out), ylim = c(20,0), 
+        type = "l", main = "pH", lty = 1, ylab = "depth")
+```
+
+## Microphytobenthos production
+
+MPB is modeled in a straightforward way, by imposing the maximal (unlimited) oxygen production rate (parameter *MPBprod*), an exponential decay parameter (*kMPB*), describing light penetration, and nutrient and DIC limitation, modeled by a Monod equations, with parameters *kNH3upt*, *kPO4upt* and *kDICupt* respectively.
+
+The larger the MPB production rate, the more difficult it becomes to find a solution.  Difficult cases can be solved by ramping up the solution, using previous solutions as initial guesses for the next solution.
+
+```{r fig.width=8, fig.height=6, eval = FALSE}
+
+out1 <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 0))
+out2 <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 1e2), yini = out1$y)
+out2b <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 1e3), yini = out2$y)
+out2c <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 5e3), yini = out2b$y, method = "mixed")
+out2d <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 8e3), yini = out2c$y, method = "mixed")
+out3 <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 1e4), yini = out2d$y, method = "mixed")
+out4 <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 5e4), yini = out3$y, method = "mixed")
+out5 <- FESDIAsolve(parms = c(por0 = 0.5, MPBprod = 1e5), yini = out4$y, method = "mixed")
+PH1 <- FESDIApH(out1)
+PH2 <- FESDIApH(out2)
+PH3 <- FESDIApH(out3)
+PH4 <- FESDIApH(out4)
+PH5 <- FESDIApH(out5)
+```
+
+```{r fig.width=8, fig.height=6, eval = FALSE}
+plot(out1, out2, out3, out4, out5,  ylim = c(10, 0), 
+    lty = 1, lwd = 2, which = c(4,5:7), mfrow = c(2, 3))
+legend("center", col = 1:5, title = "prod, mmol/m3/d", legend = c(0, 1e2, 1e4,  5e4, 1e5), lty = 1) 
+plot(out1, out2, out3, out4, out5, ylim = c(3, 0), 
+  lty = 1, lwd = 2, which = 3, mfrow = NULL)
+matplot(x = cbind(PH1, PH2, PH3, PH4, PH5), y = FESDIAdepth(out1), type = "l",
+     ylim = c(3, 0), lty = 1, lwd = 2, main = "pH", ylab = "", xlab = "")
+```
+
+```{r fig.width=6, fig.height=4, eval = FALSE}
+pH <- cbind(FESDIApH(out1),FESDIApH(out2),FESDIApH(out3),FESDIApH(out4))
+par(mfrow = c(1,2))
+matplot(x = pH, y = FESDIAdepth(out1), ylim = c(2,0), 
+        type = "l", main = "pH", lty = 1, lwd = 2, ylab = "depth")
+matplot(x = pH, y = FESDIAdepth(out1), ylim = c(10,0), 
+        type = "l", main = "pH", lty = 1, lwd = 2, ylab = "depth")
+
+```
+
+```{r, eval = FALSE}
+FESDIAbudgetO2(out1, out2, out3, out4)
+FESDIAbudgetC (out1, out2, out3, out4, which = "Rates")
+```
+
+## Dry flats (but moist sediment)
+
+When flats are dry, the exchange is governed by a piston velocity. The exchange of substances at the upper interface can take on two modes: exchange with water overlying the sediment or exchange with the atmosphere.
+
+When the parameter *gasflux*, or forcing function *gasfluxForc* is 0, this means that the sediment is submersed. When they have a positive value, equal to the piston velocity, (units [cm/d]), this means that the sediment is exposed to the air. In that case, only oxygen and DIC are exchanged with the air at the upper interface, while there is no exchange for NH3, NO3, NO2, PO4, ... Deposition of the two carbon fractions and of FeOH3, CaP continues.
+
+```{r fig.width=8, fig.height=6, eval = FALSE}
+out    <- FESDIAsolve()
+outdry <- FESDIAsolve(parms = list(gasflux = 1e2), yini = out$y)
+
+plot(out1, outdry, ylim = c(10, 0), lty = 1, lwd = 2, 
+     which = c("O2","NO3","NH3","PO4","FeP","TOC"))
+legend("center", col = 1:2, title = "exchange", legend = c("water","dry"), lty = 1) 
+
+print(FESDIAbudgetO2(outdry))
+print(FESDIAbudgetN(outdry))
+```
+
+
+
+## Long distance oxidation
+
+Parameters *rSurfH2Sox*, *rSurfCH4ox*,*ODUoxdepth* and *ODUoxatt* define the deep H2S or CH4 oxidation rate consuming oxygen from the surface layer.
+
+The larger the oxidation rate, the more difficult it becomes to find a solution, so difficult cases can be solved by ramping up the solution, using previous solutions as initial guesses for the next solution.
+
+It also helps to run the model dynamically to steady-state.
+
+This will only be effective if sufficient H2S is formed, so the Carbon flux is sufficiently high.
+
+Three parameters determine the long distance oxidation:
+
+```{r}
+FESDIAparms(which = c("rSurfH2Sox", "rSurfCH4ox","ODUoxdepth", "ODUoxatt"))
+```
+
+*rSurfH2Sox* and *rSurfCH4ox* set the maximal rate, while *ODUoxdepth* and *ODUoxatt* determine the shape of the rate, maximal in an upper layer with thickness *ODUoxdepth* and then going to 0 with an attenuation rate *ODUoxatt*.
+
+
+As an examples, runs are created that vary the surface rate as well as the depth of the oxidation:
+
+
+```{r fig.width=8, fig.height=6}
+P <- FESDIAparms(as.vector = TRUE)
+P["rSurfH2Sox"]   <- 1
+P["pFast"]        <- 0.2   # mmolFeOH3/m3 half-sat FeOH3 in iron red  
+P["rSlow"]        <- 1e-5
+P["kinFeOH3"]     <- 0.1
+P["kinNO3anox"]   <- 0.1
+P["FeOH3flux"]   <- 100
+#P["ODUoxdepth"] <- 10
+p0 <- p1 <- p2 <- p3 <- P
+
+p1["Cflux"] <- 100
+p2["Cflux"] <- 5000 
+p3["Cflux"] <- 10000 #; p3["ODUoxdepth"] <- 10
+
+out0<- FESDIAsolve()
+out0b   <- FESDIAdyna (parms = p0, yini = out0$y,          times = c(0,1e8))
+out0b   <- FESDIAdyna (parms = p0, yini = out0b[2,2:1701], times = c(0,1e8))
+out0c   <- FESDIAsolve(parms = p0, yini = out0b[2,2:1701], method = "mixed")
+
+out1ini <- FESDIAsolve(parms = list(Cflux = 100))
+out1a   <- FESDIAdyna (parms = p1, yini = out1ini$y,       times = c(0,1e10))
+out1a   <- FESDIAdyna (parms = p1, yini = out1a[2,2:1701], times = c(0,1e10))
+out1    <- FESDIAsolve(parms = p1, yini = out1a[2,2:1701], method = "runsteady")
+
+out2ini <- FESDIAsolve(parms = list(Cflux = 5000))
+out2a <- FESDIAdyna(parms = p2, yini = out2ini$y, times = c(0,1e10))
+out2 <- FESDIAsolve(parms = p2, yini = out2a[2,2:1701], method = "runsteady")
+
+
+out3ini <- FESDIAsolve(parms = list(Cflux = 10000))
+out3a   <- FESDIAdyna(parms = p3, yini = out3ini$y, times = c(0,1e10))
+out3    <- FESDIAsolve(parms = p3, yini = out3a[2,2:1701], method = "runsteady")
+```
+
+This makes no sense for the pH and alkalinity profiles.
+
+```{r fig.width=8, fig.height=6}
+
+plot(out0, out1, out2, out3, ylim = c(10, 0), 
+     lty = 1, lwd = 2, which = c(6,5), mfrow = c(2,2))
+plot(out0,out1, out2, out3, ylim = c(0.5, 0), 
+     lty = 1, lwd = 2, which = 3, mfrow = NULL)
+plot(out0,out1, out2, out3, ylim = c(30, 0), 
+     lty = 1, lwd = 2, which = c("H2Soxsurf", "H2S", "SO4", "ALK"))
+plot(out2, out3, ylim = c(5, 0), lty = 1, lwd = 2, 
+  which = c("H2Soxsurf", "O2distConsump", "FeOH3", "BSRmin"))
+
+```
+
+```{r}
+FESDIAbudgetO2(out0, out1, out2, out3, which = "Fluxes")
+```
+
+
+```{r fig.width=4, fig.height=6}
+pH <- cbind(FESDIApH(out2),FESDIApH(out3))
+matplot(x = pH, y = FESDIAdepth(out1), ylim = c(2,0), xlim = c(0,10),
+        type = "l", main = "pH", lty = 1, lwd = 2, ylab = "depth")
+```
+
+# Dynamic runs with sinusoidal forcing
+
+## Carbon input
+In the first dynamic run, a sinusoidal variation in time is used for the C flux, with amplitude = 1, the other parameters are left equal to the default.
+
+```{r fig.width=8, fig.height=8}
+DIA <- FESDIAdyna (Cflux = list(amp = 1))
+pH  <- FESDIApH(DIA)
+
+image2D(DIA, ylim = c(20, 0), which = c(3:6,8), mfrow = c(3,3))
+plot3D:::image2D(pH, y = FESDIAdepth(DIA), ylim = c(20, 0), main = "pH")
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2)
+plot(DIA, which = c("NH3flux", "ALKflux"), mfrow = NULL, lwd = 2)
+```
+
+## Microphytobenthos production
+
+### Seasonal variation
+
+First a model is run with seasonally variable MPB production.
+
+```{r fig.width=8, fig.height=8}
+
+DIA <- FESDIAdyna (parms = list(MPBprod = 50000, por0 = 0.5),
+      MPBprodForc = list(amp = 4, phase = 100), spinup = 0:365)
+image2D(DIA, ylim = c(20, 0), which = 3:5, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2)
+plot(DIA, which = c("TotO2prod", "TotDenit","ALKflux","NO3flux","PO4flux"), 
+  mfrow = NULL, lwd = 2)
+print(FESDIAbudgetO2(DIA))
+```
+
+### Diurnal variation
+
+A run with daily variable MPB production:
+
+```{r fig.width=8, fig.height=8}
+INI <- FESDIAsolve (parms = list(por0 = 0.5))
+
+DIA <- FESDIAdyna (parms = list(MPBprod = 10000, por0 = 0.5), 
+                   MPBprodForc = list(amp = 4, period = 1), 
+                   spinup = seq(0, 10, length.out = 1000), yini = INI$y,
+                   times = seq(0, 3,length.out = 100))
+PH <- FESDIApH(DIA)
+image2D(DIA, ylim = c(5, 0), which = 3:5, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2)
+plot(DIA, which = c("TotO2prod", "TotDenit","ALKflux","NO3flux","PO4flux"), mfrow = NULL, lwd = 2)
+print(FESDIAbudgetO2(DIA))
+```
+
+## Microphytobenthos production with sediments falling dry
+
+Sediments are imposed to be exposed to the air by giving *gasfluxForc* a value other than 0, as in following example.
+
+```{r fig.width=8, fig.height=8}
+F <- 1e3
+gasflux <- data.frame(time = c(0, 0.19999, 0.2, 0.6, 0.6661, 1.19999, 1.2, 1.6, 1.6661, 2.19999, 2.2, 2.6, 2.6661, 3),
+                flux = c(0,  0,      F,   F,   0,      0      , F,   F,   0,      0      ,F,   F,   0,      0      ))
+DIA <- FESDIAdyna (parms = list(MPBprod = 10000), 
+             MPBprodForc = list(amp = 4, period = 1), gasfluxForc = list(data = gasflux),
+             spinup = seq(0, 3, length.out = 100), times = seq(0, 3, length.out = 100))
+image2D(DIA, ylim = c(5, 0), which = c(3:5,10),  mfrow = c(3,4))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2)
+plot(DIA, which = c("TotO2prod", "TotDenit","NO3flux","PO4flux","DICflux","H2Sflux","ALKflux"), mfrow = NULL, lwd = 2)
+print(FESDIAbudgetO2(DIA))
+```
+
+# dynamic runs with forcing function time series
+
+## Carbon flux and bottom water concentrations
+
+We can also impose a time-series. Here we impose this for the carbon flux, and for the Oxygen bottom water concentration.
+
+```{r fig.width=8, fig.height=8}
+fluxforcdat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                          flux = c(20, 20, 100, 100, 20, 20)*1e5/12/365)
+O2forcdat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                        conc = c(200, 200, 10, 10, 200, 200))
+DIA <- FESDIAdyna (CfluxForc = list(data = fluxforcdat), 
+                   O2bwForc = list(data = O2forcdat), spinup = 0:365)
+image2D(DIA,  which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA, which = c("bwO2","NH3flux"), mfrow = NULL, lwd = 2)
+```
+
+## Flux and sedimentation rates
+
+Other variables that can be forced are *w*, *biot*, *irr* for the sedimentation rate, bioturbation rate and irrigation rates respectively, microphytobenthos production, ...
+
+```{r fig.width=8, fig.height=8}
+fluxforcdat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                          flux = c(20, 20, 100, 100, 20, 20)*1e5/12/365)
+seddat <- data.frame(time = c(0, 100, 101, 200, 201, 365),
+                     w = c(0.1, 0.1, 10, 10, 0.1, 0.1)/365)  #cm/d
+DIA <- FESDIAdyna (CfluxForc = list(data = fluxforcdat), 
+                   wForc = list(data = seddat), 
+                   spinup = 0:365)
+image2D(DIA, ylim = c(20, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA, which = c("w", "NH3flux"), mfrow = NULL, lwd = 2)
+```
+
+## Deposition-erosion rates. 
+
+Particles often go through a repeated deposition-erosion cycle. In the first case, sedimation rates, w is positive, and there is solid deposition; in the latter case, *w* is negative and there is no carbon deposition, *Cdepo*.
+
+```{r fig.width=8, fig.height=8}
+FF <- c(20, 30, 20, 10, 0, 0, 0, 0, 0, 0)*1e5/12/365
+SS <- c(0.2, 0.2, 0.2, 0.1, 0.0,-0.1,-0.2,-0.2,-0.1, 0)  #cm/d
+FF <- rep(FF, times = 10)
+Fluxforcdat <- data.frame(time = seq(0, to = 39.8, length.out = length(FF)), 
+                          flux = FF)
+
+SS <- rep(SS, times = 10)
+Seddat <- data.frame(time = seq(0, to = 39.8, length.out = length(SS)), 
+                     w = SS)
+
+times <- seq(0, 19, length.out = 300)
+
+P <- list(Cflux = FF[1], w = SS[1])
+std <- FESDIAsolve(parms = P)
+DIA <- FESDIAdyna (wForc = list(data = Seddat), times = times, spinup = times,
+                    yini = std$y)
+```
+
+```{r fig.width=8, fig.height=8}
+image2D(DIA, ylim = c(15, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA, which = c("w","NH3flux"), mfrow = NULL, lwd = 2)
+
+```
+
+
+In the second run both the sedimentation rate and the carbon flux fluctuate.
+
+```{r}
+DIA2 <- FESDIAdyna (CfluxForc = list(data = Fluxforcdat), wForc = list(data = Seddat),
+                    times = times, spinup = times, yini = std$y)
+
+```
+
+```{r fig.width=8, fig.height=8}
+image2D(DIA2, ylim = c(15, 0), which = 3:8, mfrow = c(3,3))
+matplot.0D(DIA2, which = c("OrgCflux", "O2flux"), mfrow = NULL, lty = 1, lwd = 2, main = "Fluxes")
+plot(DIA2, which = c("w", "NH3flux"), mfrow = NULL, lwd = 2)
+
+print(FESDIAbudgetC(DIA, DIA2))
+```
+
+
+# Dynamic runs with explicitly modeled bottom water conditions
+
+## Incubation experiments
+
+The simulation is initiated with the steady-state conditions, while keeping the bottom water conditions constant.
+
+```{r}
+std <- FESDIAsolve(dynamicbottomwater = FALSE, parms = list(Cflux = 20*1e5/12/365))
+FESDIAbudgetO2(std, which = "Fluxes")
+```
+
+The initial conditions for the dynamic bottom water concentration run needs to have the bottom water concentrations as the first row.
+
+The model is run for two days.
+
+```{r}
+P <- FESDIAparms(std, as.vector = TRUE)[c("O2bw", "NO3bw", "NO2bw", "NH3bw", "DICbw", "Febw", "H2Sbw", "SO4bw", "CH4bw", "PO4bw", "ALKbw")]
+
+# order of state variables, FDET,SDET,O2,NO3,NO2,NH3,DIC,Fe,FeOH3,H2S,SO4,CH4,PO4,FeP,CaP,Pads,ALK
+BW <- c(0, 0, P[c("O2bw","NO3bw","NO2bw","NH3bw","DICbw","Febw")], 0, P[c("H2Sbw","SO4bw","CH4bw","PO4bw")], 0, 0, 0, P["ALKbw"])  
+dyn <- FESDIAdyna(dynamicbottomwater = TRUE, yini = rbind(BW, std$y), 
+      parms = list(Cflux = 20*1e5/12/365), times = seq(0, 2, length.out = 100))
+```
+
+```{r, fig.width = 6, fig.height = 6}
+image2D(dyn, which = c("O2", "NO3", "NH3","CH4"), ylim = c(10,0))
+plot(dyn, which = c("O2bw","NO3bw","NH3bw","CH4bw","PO4bw","H2Sbw"))
+plot(dyn, which = c("O2flux","NO3flux","NH3flux","CH4flux","PO4flux","H2Sflux"))
+
+```
+
+
+# Perturbation runs
+
+See vignette ("FESDIAperturb")
+
+
+# References
+Soetaert K, PMJ Herman and JJ Middelburg, 1996a. A model of early diagenetic processes from the shelf to abyssal depths. Geochimica Cosmochimica Acta, 60(6):1019-1040.
+
+Soetaert K, PMJ Herman and JJ Middelburg, 1996b. Dynamic response of deep-sea sediments to seasonal variation: a model. Limnol. Oceanogr. 41(8): 1651-1668.
+
+# APPENDIX
+
+## Parameters and default values.
+
+```{r}
+knitr:::kable(FESDIAparms())
+```
+
+## State variables
+
+```{r}
+knitr:::kable(FESDIAsvar())
+```
+
+## Zero-D ordinary variables
+
+```{r}
+knitr:::kable(FESDIA0D())
+```
+
+## One-D ordinary variables
+
+```{r}
+knitr:::kable(FESDIA1D())
+```
+
+

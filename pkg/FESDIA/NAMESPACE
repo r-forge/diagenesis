@@ -1,0 +1,36 @@
+useDynLib(FESDIA, .registration = TRUE)
+
+importFrom(ReacTran, setup.grid.1D)
+importFrom(ReacTran, setup.prop.1D)
+importFrom(ReacTran, p.exp)
+importFrom(marelac, diffcoeff, sw_dens)
+importFrom(AquaEnv, aquaenv)
+
+importFrom("methods", "setOldClass", "setMethod")
+
+importFrom("graphics", "image", "legend", "mtext", "par", "plot")
+importFrom("stats", "approx", "approxfun", "runif")
+importFrom("utils", "capture.output")
+importFrom("grDevices", "dev.interactive", "devAskNewPage")
+importFrom("stats", "uniroot")
+
+import(deSolve, rootSolve, plot3D)
+
+export(FESDIAsolve, FESDIAdyna, FESDIAperturb) 
+export(FESDIAperturbFluxes, FESDIAperturbSettings)
+export(FESDIAparms, FESDIAdepth, FESDIAgrid, FESDIApor, FESDIAbiot, FESDIAirr, FESDIAdx)
+export(FESDIA0D, FESDIA1D, FESDIAsvar)
+export(FESDIAbudgetC)
+export(FESDIAbudgetO2)
+export(FESDIAbudgetN)
+export(FESDIAbudgetP)
+export(FESDIAbudgetFe)
+export(FESDIAbudgetS)
+export(FESDIApH)
+export(FESDIAextract)
+export(matplot1D)
+
+S3method("image2D", "FESDIAdyn")
+S3method("matplot1D", "default")
+S3method("matplot1D", "FESDIAdyn")
+S3method("plot", "FESDIAstd")
