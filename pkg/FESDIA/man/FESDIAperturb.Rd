@@ -16,7 +16,7 @@
      irrigation = NULL, surface = NULL, diffusionfactor = NULL, 
      dynamicbottomwater = FALSE, perturbType = "mix", 
      perturbTimes =  seq(from = 0, to = max(times), by = 365), 
-     perturbDepth = 5, concfac = 1, 
+     perturbDepth = 5, concfac = c(1, 1), 
      CfluxForc = NULL,FeOH3fluxForc = NULL, CaPfluxForc = NULL,  
      O2bwForc   = NULL,  NO3bwForc  = NULL,  NO2bwForc  = NULL,
      NH3bwForc  = NULL,  FebwForc   = NULL,  H2SbwForc  = NULL,  
@@ -150,7 +150,7 @@
  \item{perturbDepth}{ the depth of the perturbation, in cm.
   }
   
- \item{concfac}{ only when perturb = "deposit": the factor at which the available concentration should be increased or decreased.
+ \item{concfac}{ only when perturbType = "deposit": a 2-valued vector with the factor at which the available concentration for FDET and SDET should be increased or decreased.
   } 
  \item{verbose}{ If TRUE, will write progession to the screen .
   } 

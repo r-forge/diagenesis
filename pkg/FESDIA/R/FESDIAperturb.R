@@ -99,7 +99,7 @@ FESDIAperturb <- function (parms = list(), times = 0:365, spinup = NULL,
      irrigation = NULL, surface = NULL, 
      diffusionfactor = NULL,  dynamicbottomwater = FALSE, 
      perturbType = "mix", perturbTimes =  seq(from = 0, to = max(times), by = 365), 
-     perturbDepth = 5, concfac = 1, 
+     perturbDepth = 5, concfac = c(1, 1), 
      CfluxForc  = NULL, FeOH3fluxForc = NULL, CaPfluxForc = NULL,  
      O2bwForc   = NULL,   NO3bwForc  = NULL,  
      NO2bwForc  = NULL,   NH3bwForc  = NULL,  FebwForc   = NULL,  
@@ -116,6 +116,8 @@ FESDIAperturb <- function (parms = list(), times = 0:365, spinup = NULL,
   CaCO3fluxForc <- NULL
   ARAGfluxForc  <- NULL
   CabwForc      <- NULL
+  if (length(concfac) == 1) concfac <- rep(concfac, length.out = 2)
+  
   if (dynamicbottomwater) model <- 2
 
   perttype <- match.arg(perturbType, c("mix", "erode", "deposit"), several.ok = TRUE)
@@ -313,8 +315,8 @@ FESDIAperturb <- function (parms = list(), times = 0:365, spinup = NULL,
        pertCONC[,"Fe"]   <- Erode (pertCONC[,"Fe"]   , N.Pert[i], porGrid, Grid)
 
      } else { # deposit
-       pertCONC[,"FDET"] <- DepositDET (pertCONC[,"FDET"],  N.Pert[i], porGrid, Grid, concfac)
-       pertCONC[,"SDET"] <- DepositDET (pertCONC[,"SDET"],  N.Pert[i], porGrid, Grid, concfac)
+       pertCONC[,"FDET"] <- DepositDET (pertCONC[,"FDET"],  N.Pert[i], porGrid, Grid, concfac[1])
+       pertCONC[,"SDET"] <- DepositDET (pertCONC[,"SDET"],  N.Pert[i], porGrid, Grid, concfac[2])
        pertCONC[,"FeP"]  <- DepositDET (pertCONC[,"FeP"] ,  N.Pert[i], porGrid, Grid, 1)
        pertCONC[,"CaP"]  <- DepositDET (pertCONC[,"CaP"] ,  N.Pert[i], porGrid, Grid, 1)
        pertCONC[,"FeOH3"]<- DepositDET (pertCONC[,"FeOH3"], N.Pert[i], porGrid, Grid, 1)

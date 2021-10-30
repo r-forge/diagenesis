@@ -117,12 +117,10 @@
 
   ## MPB production
     MPBprod   =     0         , # mmol/m3/d   maximal rate - range: 5000-5e4
-    kMPB      =     4         , # /cm,        exponential decay 
-    kDINupt   =  0.01         , # mmol/m3,    DIN limitation constant
+    kdSed     =    20         , # /cm,        exponential decay 
+    kNH3upt   =  0.01         , # mmol/m3,    DIN limitation constant
     kPO4upt   = 0.001         , # mmol/m3,    P limitation constant
     kDICupt   =     1           # mmol/m3,    C limitation constant
-  
-  
     )
 
 # parameter units
